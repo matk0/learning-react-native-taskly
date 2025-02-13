@@ -53,7 +53,7 @@ const styles = StyleSheet.create({
   itemContainer: {
     borderBottomWidth: 1,
     borderBottomColor: theme.colorCerulean,
-    paddingHorizontal: 8,
+    paddingHorizontal: 18,
     paddingVertical: 16,
     flexDirection: "row",
     justifyContent: "space-between",
@@ -73,7 +73,6 @@ const styles = StyleSheet.create({
     textDecorationColor: theme.colorGrey,
     color: theme.colorGrey,
   },
-
   button: {
     backgroundColor: theme.colorBlack,
     padding: 8,
