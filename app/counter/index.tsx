@@ -1,4 +1,11 @@
-import { Text, View, StyleSheet, TouchableOpacity, Alert } from 'react-native';
+import {
+  Text,
+  View,
+  StyleSheet,
+  TouchableOpacity,
+  Alert,
+  ActivityIndicator,
+} from 'react-native';
 import { theme } from '../../theme';
 import { registerForPushNotificationsAsync } from '../../utils/registerForPushNotificationsAsync';
 import * as Device from 'expo-device';
@@ -6,9 +13,16 @@ import * as Notifications from 'expo-notifications';
 import { useState, useEffect } from 'react';
 import { intervalToDuration, isBefore, Duration } from 'date-fns';
 import { TimeSegment } from '../../components/TimeSegment';
+import { getFromStorage, saveToStorage } from '../../utils/storage';
 
-// 10 seconds from now
-const timestamp = Date.now() + 10 * 1000;
+// 10 seconds in ms
+const frequency = 10 * 1000;
+export const countdownStorageKey = 'taskly-countdown';
+
+export type PersistedCountdownState = {
+  currentNotificationId: string | undefined;
+  completedAtTimestamps: number[];
+};
 
 type CoundownStatus = {
   isOverdue: boolean;
@@ -16,15 +30,32 @@ type CoundownStatus = {
 };
 
 export default function CounterScreen() {
+  const [isLoading, setIsLoading] = useState(true);
+  const [countdownState, setCountdownState] =
+    useState<PersistedCountdownState>();
   const [status, setStatus] = useState<CoundownStatus>({
     isOverdue: false,
     distance: {},
   });
 
-  console.log(status);
+  useEffect(() => {
+    const init = async () => {
+      const value = await getFromStorage(countdownStorageKey);
+      setCountdownState(value);
+    };
+    init();
+  }, []);
+
+  const lastCompletedAt = countdownState?.completedAtTimestamps[0];
 
   useEffect(() => {
     const intervalId = setInterval(() => {
+      const timestamp = lastCompletedAt
+        ? lastCompletedAt + frequency
+        : Date.now();
+      if (lastCompletedAt) {
+        setIsLoading(false);
+      }
       const isOverdue = isBefore(timestamp, Date.now());
       const distance = intervalToDuration(
         isOverdue
@@ -36,17 +67,18 @@ export default function CounterScreen() {
     return () => {
       clearInterval(intervalId);
     };
-  }, []);
+  }, [lastCompletedAt]);
 
   const scheduleNotification = async () => {
+    let pushNotificationId;
     const result = await registerForPushNotificationsAsync();
     if (result === 'granted') {
-      await Notifications.scheduleNotificationAsync({
+      pushNotificationId = await Notifications.scheduleNotificationAsync({
         content: {
-          title: "I'm a notification from you app!",
+          title: 'The thing is due!',
         },
         trigger: {
-          seconds: 5,
+          seconds: frequency / 1000,
         },
       });
     } else {
@@ -57,7 +89,31 @@ export default function CounterScreen() {
         );
       }
     }
+
+    if (countdownState?.currentNotificationId) {
+      await Notifications.cancelScheduledNotificationAsync(
+        countdownState.currentNotificationId,
+      );
+    }
+
+    const newCountdownState: PersistedCountdownState = {
+      currentNotificationId: pushNotificationId,
+      completedAtTimestamps: countdownState
+        ? [Date.now(), ...countdownState.completedAtTimestamps]
+        : [Date.now()],
+    };
+
+    setCountdownState(newCountdownState);
+    await saveToStorage(countdownStorageKey, newCountdownState);
   };
+
+  if (isLoading) {
+    return (
+      <View style={styles.activityIndicatorContainer}>
+        <ActivityIndicator />
+      </View>
+    );
+  }
 
   return (
     <View
@@ -96,7 +152,7 @@ export default function CounterScreen() {
         />
       </View>
       <TouchableOpacity style={styles.button} onPress={scheduleNotification}>
-        <Text style={styles.buttonText}>Request Permission</Text>
+        <Text style={styles.buttonText}>I've Done The Thing!</Text>
       </TouchableOpacity>
     </View>
   );
@@ -133,5 +189,11 @@ const styles = StyleSheet.create({
   },
   whiteText: {
     color: 'white',
+  },
+  activityIndicatorContainer: {
+    backgroundColor: 'white',
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
 });
